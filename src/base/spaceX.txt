@@ -1,0 +1,92 @@
+#include "src/base/spaceX.h"
+
+#include <pthread.h>
+
+#include "src/base/disk_operator.h"
+#include "src/base/storage_system.h"
+#include "src/utility/histogram.h"
+#include "src/utility/unblocking_queue.h"
+
+UnblockingQueue *g_uq = NULL;
+
+bool CheckStable(SpaceX *spaceX)
+{
+    StorageSystem *storSys = (StorageSystem *)spaceX->data.storSys;
+    Histogram *writeHist = storSys->data.writeHist;
+    for (int i = 0; i < TIER_NUM; i++) {
+        DiskOperator *diskOp = storSys->data.tiers[i]->data.diskOp;
+        if (!diskOp) continue;
+        for (int j = 0; j < diskOp->data.hostConcurrency; j++) {
+            Histogram *other = diskOp->data.writeHists[j];
+            writeHist->intf->merge(writeHist, other);
+        }
+    }
+    int32_t curLatency = writeHist->data.sum / writeHist->data.num;
+    if (spaceX->data.lastLatency == 0) {
+        spaceX->data.lastLatency = curLatency;
+    }
+    return (abs(curLatency - spaceX->data.lastLatency) < threshold);
+}
+
+void *LatencyTouch(void *self)
+{
+    SpaceX *spaceX = (SpaceX *)self;
+    StorageSystem *storSys = (StorageSystem *)spaceX->data.storSys;
+
+    while (spaceX->data.running) {
+        int item = 0;
+        for (int i = 0; i < IO_TIMES; i++) {
+            uint64_t latency = 0;
+        }
+    }
+}
+
+bool WorkloadChangeSniffer(SpaceX *spaceX)
+{
+    LayerModule *t0 = ((StorageSystem *)spaceX->data.storSys)->data.tiers[0];
+    uint32_t gcCount = t0->data.statModule->data.gcCount;
+    uint32_t tierdownCount = t0->data.statModule->data.tierDownCount;
+
+    uint32_t gcDiff = gcCount - spaceX->data.lastGCCount;
+    uint32_t tierDownDiff = tierdownCount - spaceX->data.lastTierCount;
+    double ratio = ((double)gcDiff) / tierDownDiff;
+    if (ratio > spaceX->data.lastFreqRatio) {
+        // skewed
+        spaceX->data.x -= step;
+    } else {
+        spaceX->data.x += step;
+    }
+
+    spaceX->data.lastFreqRatio = ratio;
+
+    return true;
+}
+
+void *SpaceXThread(void *self)
+{
+    SpaceX *spaceX = (SpaceX *)self;
+    while (true) {
+        while (CheckStable(spaceX)) {
+            sleep(10);
+        }
+        while (true) {
+            if () {
+            }
+        }
+    }
+}
+
+int32_t CreateSpaceX(SpaceX **ppSpaceX, SpaceXConfigure *conf)
+{
+    SpaceX *spaceX = (SpaceX *)malloc(sizeof(SpaceX));
+    assert(spaceX);
+    spaceX->data.storSys = conf->storSys;
+
+    UnblockingQueueConfigure conf = {
+        .itemSize = sizeof(uint64_t),
+    };
+    CreateUnblockingQueue();
+
+    pthread_create(&tid, NULL, SpaceXThread, (void *)spaceX);
+    return 0;
+}
